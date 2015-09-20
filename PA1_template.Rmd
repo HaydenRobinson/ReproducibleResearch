@@ -1,0 +1,151 @@
+---
+title: "PA1_template.Rmd"
+output: html_document
+---
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+summary(cars)
+```
+
+You can also embed plots, for example:
+
+```{r, echo=FALSE}
+plot(cars)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+
+-------------------------------
+Reproducible Research Assignment:
+Reading in the data and transforming value types.
+```{r, echo=TRUE}
+assndata <- read.csv(unz("activity.zip","activity.csv"))
+assndata$date <- as.Date(assndata$date)
+assndata$interval <- as.factor (assndata$interval)
+```
+
+Calculate the total number of steps taken per day.
+```{r,echo=TRUE}
+steps_daily <- aggregate(steps ~ date, assndata, sum)
+colnames(steps_daily) <- c("date","steps")
+```
+
+Create a histogram of the total number of steps taken each day.
+```{r,echo=TRUE}
+library(ggplot2)
+ggplot(steps_daily, aes(x = steps)) +
+	geom_histogram(fill = "red", binwidth =1000) +
+		labs(title="Steps Taken per Day", x = "Number of steps per day", y="number of times in day")
+```
+
+Caluculate and report mean and median of the total number of steps taken per day.
+```{r,echo=TRUE}
+steps_mean <- mean(steps_daily$steps)
+steps_median <- median(steps_daily$steps)
+paste("Mean =", steps_mean, "| Median =", steps_median)
+```
+
+Calculating the average daily activity pattern
+```{r,echo=TRUE}
+steps_interval <- aggregate(assndata$steps,
+	by = list(interval = assndata$interval),
+	FUN=mean, na.rm=TRUE)
+steps_interval$interval <- as.integer(levels(steps_interval$interval)[steps_interval$interval])
+colnames(steps_interval) <- c("interval","steps")
+```
+
+Creating a time series plost of the 5-minute intervals on the x-axis and the average number of steps taken averaged across all days on the y-axis.
+```{r,echo=TRUE}
+ggplot(steps_interval, aes(x=interval, y=steps)) +
+	geom_line(color="blue", size=1) +
+	labs(title="Average Daily Activity Pattern", x="Interval", y="Number of Steps")
+```
+
+Calculating the interval with maximum number of steps
+```{r,echo=TRUE}
+max_interval <- steps_interval[which.max(steps_interval$steps),]
+paste("Interval =", max_interval[1], "| Steps =", max_interval[2])
+```
+
+Inputting the missing values
+```{r,echo=TRUE}
+numbermissing <- sum(is.na(assndata$steps))
+paste("Number of missing values =", numbermissing)
+
+fillmissing <-function(data, pervalue) {
+	missing <- which(is.na(data$steps))
+	replacemissing <- unlist(lapply(missing, FUN=function(idx) {
+		interval = data[idx,]$interval
+		pervalue[pervalue$interval==interval,]$steps
+	}))
+	fill_steps <- data$steps
+	fill_steps[missing] <-replacemissing
+	fill_steps
+}
+
+assndata_fillmissing <- data.frame(
+	steps = fillmissing(assndata, steps_interval),
+	date = assndata$date,
+	interval = assndata$interval)
+str(assndata_fillmissing)
+```
+
+Creating a histogram of the total number of steps taken each day 
+```{r,echo=TRUE}
+steps_daily2 <-aggregate(steps ~ date, assndata_fillmissing, sum)
+colnames(steps_daily2) <- c("date", "steps")
+
+ggplot(steps_daily2, aes(x=steps))+
+	geom_histogram(fill="red", binwidth=1000)+
+	labs(title="Steps Taken Per Day", x="Number of steps per day", y="Number of times in day")
+```
+
+Calculating the mean and median and printing them beside the original data values for comparison
+```{r,echo=TRUE}
+steps_mean2 <- mean(steps_daily2$steps, na.rm=TRUE)
+steps_median2 <- median(steps_daily2$steps, na.rm=TRUE)
+paste("Mean =", steps_mean, "|Mean (filled data) =", steps_mean2, "| Median =", steps_median, "| Median (filled data)=", steps_median2)
+```
+
+Assessing for differences in activity patterns by time of the week.
+```{r}
+weekdays_steps <- function(data) {
+    weekdays_steps <- aggregate(data$steps, by=list(interval = data$interval), FUN=mean, na.rm=T)
+    weekdays_steps$interval <- 
+            as.integer(levels(weekdays_steps$interval)[weekdays_steps$interval])
+    colnames(weekdays_steps) <- c("interval", "steps")
+    weekdays_steps
+}
+
+data_by_weekdays <- function(data) {
+    data$weekday <- as.factor(weekdays(data$date))
+    weekend_data <- subset(data, weekday %in% c("Saturday","Sunday"))
+    weekday_data <- subset(data, !weekday %in% c("Saturday","Sunday"))
+    
+    weekend_steps <- weekdays_steps(weekend_data)
+    weekday_steps <- weekdays_steps(weekday_data)
+    
+    weekend_steps$dayofweek <- rep("weekend", nrow(weekend_steps))
+    weekday_steps$dayofweek <- rep("weekday", nrow(weekday_steps))
+    
+    data_by_weekdays <- rbind(weekend_steps, weekday_steps)
+    data_by_weekdays$dayofweek <- as.factor(data_by_weekdays$dayofweek)
+    data_by_weekdays
+}
+
+data_weekdays <- data_by_weekdays(assndata_fillmissing)
+```
+
+Creaing a comparison timeseries plot of the 5-minute interval and the average number of steps taken for weekdays and weekends. 
+```{r,echo=TRUE}
+ggplot(data_weekdays, aes(x=interval, y=steps))+
+	geom_line(color="blue")+
+	labs(x="Interval", y="Number of Steps")+
+	facet_wrap(~ dayofweek, nrow=2,ncol=1)
+```
+
